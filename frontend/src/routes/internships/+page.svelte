@@ -20,6 +20,7 @@
 		jsonData: any;
 		createdAt: string;
 		updatedAt: string;
+		deletedAt?: string | null;
 		status:
 			| 'DRAFT'
 			| 'DRAFT_BY_TEACHER'
@@ -45,11 +46,14 @@
 	let totalRecords = $state(0);
 	let isDeleting = $state(false);
 	let isDeletingId = $state<string | null>(null);
+	let isRestoring = $state(false);
+	let isRestoringId = $state<string | null>(null);
 	let isCopying = $state(false);
 	let isCopyingId = $state<string | null>(null);
 	let teachers = $state<Teacher[]>([]);
 	let selectedTeacher = $state($page.url.searchParams.get('teacher') || '');
 	let selectedStatuses = $state<string[]>($page.url.searchParams.get('status')?.split(',').filter(Boolean) || []);
+	let isTrash = $state($page.url.searchParams.get('trash') === 'true');
 
 	const statusLabels: Record<string, string> = {
 		DRAFT: 'Editando',
@@ -95,6 +99,9 @@
 				teacher: selectedTeacher,
 				status: selectedStatuses.join(',')
 			});
+			if (isTrash) {
+				query.set('trash', 'true');
+			}
 
 			const response = await apiFetch(`/internships?${query.toString()}`);
 			if (response.ok) {
@@ -170,13 +177,15 @@
 			
 			pageSize = Number(url.searchParams.get('limit')) || 25;
 			currentPage = Number(url.searchParams.get('page')) || 1;
+			isTrash = url.searchParams.get('trash') === 'true';
 
 			const hasFilters = url.searchParams.has('search') ||
 				url.searchParams.has('studentName') ||
 				url.searchParams.has('teacher') ||
 				url.searchParams.has('status') ||
 				url.searchParams.has('page') ||
-				url.searchParams.has('limit');
+				url.searchParams.has('limit') ||
+				url.searchParams.has('trash');
 
 			if (hasFilters) {
 				if (currentUser) {
@@ -197,11 +206,18 @@
 		if (searchName) query.set('studentName', searchName);
 		if (selectedTeacher) query.set('teacher', selectedTeacher);
 		if (selectedStatuses.length > 0) query.set('status', selectedStatuses.join(','));
+		if (isTrash) query.set('trash', 'true');
 
 		const queryString = query.toString();
 		const newURL = `?${queryString}`;
 
 		goto(newURL, { keepFocus: true, replaceState: true });
+	}
+
+	function toggleTrash() {
+		isTrash = !isTrash;
+		currentPage = 1;
+		updateURL();
 	}
 
 	function handleSearch(event: KeyboardEvent) {
@@ -265,6 +281,37 @@
 		} finally {
 			isDeleting = false;
 			isDeletingId = null;
+		}
+	}
+
+	async function handleRestore(id: string) {
+		if (!confirm('Deseja restaurar este contrato de estágio da lixeira?')) return;
+
+		isRestoring = true;
+		isRestoringId = id;
+		try {
+			const response = await apiFetch(`/internships/${id}/restore`, {
+				method: 'POST'
+			});
+
+			if (response.ok) {
+				internships = internships.filter((item) => item.id !== id);
+				totalRecords--;
+
+				if (internships.length === 0 && currentPage > 1) {
+					currentPage--;
+					updateURL();
+				}
+				alert('Estágio restaurado com sucesso!');
+			} else {
+				const err = await response.json();
+				alert(err.error || 'Erro ao restaurar o estágio.');
+			}
+		} catch {
+			alert('Erro de conexão ao tentar restaurar.');
+		} finally {
+			isRestoring = false;
+			isRestoringId = null;
 		}
 	}
 
@@ -374,12 +421,54 @@
 		<header class="flex flex-col gap-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
 			<div class="flex flex-col justify-between gap-4 md:flex-row md:items-center">
 				<div>
-					<h1 class="text-2xl font-black tracking-tight text-slate-800">
-						CEDUP - Lista de Estagiários
-					</h1>
+					<div class="flex items-center gap-3">
+						<h1 class="text-2xl font-black tracking-tight text-slate-800">
+							CEDUP - Lista de Estagiários
+						</h1>
+						{#if isTrash}
+							<span class="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-100 px-3 py-0.5 text-xs font-black text-rose-700 animate-pulse">
+								<svg class="h-3.5 w-3.5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+								</svg>
+								MODO LIXEIRA
+							</span>
+						{/if}
+					</div>
 					<p class="text-sm font-medium text-slate-500">
-						Gerenciamento e consulta de contratos de estágio
+						{#if isTrash}
+							Exibindo contratos de estágio que sofreram exclusão lógica (soft-delete)
+						{:else}
+							Gerenciamento e consulta de contratos de estágio
+						{/if}
 					</p>
+				</div>
+
+				<div class="flex items-center gap-3">
+					<button
+						type="button"
+						onclick={toggleTrash}
+						class="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black transition-all shadow-sm active:scale-95 cursor-pointer {isTrash
+							? 'bg-rose-600 text-white hover:bg-rose-700 ring-2 ring-rose-300'
+							: 'border border-slate-200 bg-slate-50 text-slate-700 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600'}"
+						title={isTrash ? 'Voltar para os contratos ativos' : 'Ver lixeira (contratos com soft-delete)'}
+					>
+						{#if isTrash}
+							<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+							</svg>
+							<span>Sair da Lixeira</span>
+						{:else}
+							<svg class="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+								/>
+							</svg>
+							<span>Ver Lixeira</span>
+						{/if}
+					</button>
 				</div>
 			</div>
 
@@ -515,6 +604,29 @@
 			</div>
 		</header>
 
+		{#if isTrash}
+			<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50/90 p-4 shadow-sm" transition:fade={{ duration: 200 }}>
+				<div class="flex items-center gap-3">
+					<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-600 shadow-sm">
+						<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+						</svg>
+					</div>
+					<div>
+						<h3 class="text-sm font-black text-rose-900">Você está visualizando a Lixeira (Soft-Delete)</h3>
+						<p class="text-xs font-medium text-rose-700">Contratos de estágio excluídos do sistema. Clique no ícone verde de restauração para recuperar qualquer contrato.</p>
+					</div>
+				</div>
+				<button
+					type="button"
+					onclick={toggleTrash}
+					class="shrink-0 rounded-xl border border-rose-300 bg-white px-3.5 py-1.5 text-xs font-black text-rose-700 transition-all hover:bg-rose-100 cursor-pointer shadow-sm"
+				>
+					Voltar aos Estágios Ativos
+				</button>
+			</div>
+		{/if}
+
 		<!-- Main Content -->
 		<main
 			class="relative min-h-[400px] overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl"
@@ -574,7 +686,7 @@
 									>Criado em</th
 								>
 								<th class="px-3 py-4 text-xs font-black tracking-wider text-slate-500 uppercase"
-									>Modificado em</th
+									>{#if isTrash}Excluído em{:else}Modificado em{/if}</th
 								>
 								<th class="px-3 py-4 text-xs font-black tracking-wider text-slate-500 uppercase"
 									>Status</th
@@ -590,7 +702,7 @@
 							{#each internships as item, i (item.id)}
 								<tr
 									in:fly={{ x: -10, duration: 300, delay: i * 20 }}
-									class="group transition-colors hover:bg-indigo-50/30"
+									class="group transition-colors {isTrash ? 'hover:bg-rose-50/40' : 'hover:bg-indigo-50/30'}"
 								>
 									<td class="px-3 py-4 font-mono text-sm text-slate-600"
 										>{item.studentRegistration || '-'}</td
@@ -645,18 +757,40 @@
 											minute: '2-digit'
 										})}</td
 									>
-									<td class="px-3 py-4 text-sm whitespace-nowrap text-slate-400"
-										>{new Date(item.updatedAt).toLocaleString('pt-BR', {
-											day: '2-digit',
-											month: '2-digit',
-											year: 'numeric',
-											hour: '2-digit',
-											minute: '2-digit'
-										})}</td
-									>
+									<td class="px-3 py-4 text-sm whitespace-nowrap text-slate-400">
+										{#if isTrash && item.deletedAt}
+											<span class="inline-flex items-center gap-1 font-bold text-rose-600">
+												<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+												</svg>
+												{new Date(item.deletedAt).toLocaleString('pt-BR', {
+													day: '2-digit',
+													month: '2-digit',
+													year: 'numeric',
+													hour: '2-digit',
+													minute: '2-digit'
+												})}
+											</span>
+										{:else}
+											{new Date(item.updatedAt).toLocaleString('pt-BR', {
+												day: '2-digit',
+												month: '2-digit',
+												year: 'numeric',
+												hour: '2-digit',
+												minute: '2-digit'
+											})}
+										{/if}
+									</td>
  
 									<td class="px-3 py-4">
-										{#if item.status === 'DRAFT'}
+										{#if isTrash}
+											<span
+												class="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-rose-700 uppercase"
+											>
+												<span class="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
+												Na Lixeira
+											</span>
+										{:else if item.status === 'DRAFT'}
 											<span
 												class="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-slate-600 uppercase"
 											>
@@ -719,7 +853,7 @@
 												href="/gotce/v2?id={item.id}"
 												target="_blank"
 												class="group/btn rounded-lg p-2 text-slate-400 transition-colors hover:bg-amber-50 hover:text-amber-600"
-												title="Editar"
+												title="Ver Detalhes do TCE"
 												onclick={(e) => e.stopPropagation()}
 											>
 												<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -732,7 +866,7 @@
 												</svg>
 											</a>
 
-											{#if $user && ['teacher', 'admin', 'sudo'].includes($user.roles || '')}
+											{#if !isTrash && $user && ['teacher', 'admin', 'sudo'].includes($user.roles || '')}
 												<button
 													class="rounded-lg p-2 text-indigo-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600 disabled:opacity-30"
 													title="Criar Cópia do TCE"
@@ -759,35 +893,69 @@
 												</button>
 											{/if}
 
-											<button
-												class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 disabled:opacity-30"
-												title="Excluir"
-												disabled={isDeleting && isDeletingId === item.id}
-												onclick={(e) => {
-													e.stopPropagation();
-													handleDelete(item.id);
-												}}
-											>
-												{#if isDeleting && isDeletingId === item.id}
-													<div
-														class="h-5 w-5 animate-spin rounded-full border-2 border-red-500 border-t-transparent"
-													></div>
-												{:else}
-													<svg
-														class="h-5 w-5"
-														fill="none"
-														viewBox="0 0 24 24"
-														stroke="currentColor"
+											{#if isTrash}
+												{#if $user && ['teacher', 'admin', 'sudo'].includes($user.roles || '')}
+													<button
+														class="rounded-lg p-2 text-emerald-600 transition-colors hover:bg-emerald-50 disabled:opacity-30 cursor-pointer"
+														title="Restaurar este estágio"
+														disabled={isRestoring && isRestoringId === item.id}
+														onclick={(e) => {
+															e.stopPropagation();
+															handleRestore(item.id);
+														}}
 													>
-														<path
-															stroke-linecap="round"
-															stroke-linejoin="round"
-															stroke-width="2"
-															d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-														/>
-													</svg>
+														{#if isRestoring && isRestoringId === item.id}
+															<div
+																class="h-5 w-5 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent"
+															></div>
+														{:else}
+															<svg
+																class="h-5 w-5"
+																fill="none"
+																viewBox="0 0 24 24"
+																stroke="currentColor"
+															>
+																<path
+																	stroke-linecap="round"
+																	stroke-linejoin="round"
+																	stroke-width="2.2"
+																	d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
+																/>
+															</svg>
+														{/if}
+													</button>
 												{/if}
-											</button>
+											{:else}
+												<button
+													class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 disabled:opacity-30"
+													title="Excluir"
+													disabled={isDeleting && isDeletingId === item.id}
+													onclick={(e) => {
+														e.stopPropagation();
+														handleDelete(item.id);
+													}}
+												>
+													{#if isDeleting && isDeletingId === item.id}
+														<div
+															class="h-5 w-5 animate-spin rounded-full border-2 border-red-500 border-t-transparent"
+														></div>
+													{:else}
+														<svg
+															class="h-5 w-5"
+															fill="none"
+															viewBox="0 0 24 24"
+															stroke="currentColor"
+														>
+															<path
+																stroke-linecap="round"
+																stroke-linejoin="round"
+																stroke-width="2"
+																d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+															/>
+														</svg>
+													{/if}
+												</button>
+											{/if}
 										</div>
 									</td>
 								</tr>
@@ -795,22 +963,40 @@
 
 							{#if internships.length === 0}
 								<tr>
-									<td colspan="9" class="px-3 py-20 text-center">
+									<td colspan="10" class="px-3 py-20 text-center">
 										<div class="flex flex-col items-center space-y-2">
-											<svg
-												class="h-12 w-12 text-slate-200"
-												fill="none"
-												viewBox="0 0 24 24"
-												stroke="currentColor"
-											>
-												<path
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													stroke-width="1.5"
-													d="M9.172 9.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-												/>
-											</svg>
-											<p class="font-medium text-slate-400 italic">Nenhum estagiário encontrado.</p>
+											{#if isTrash}
+												<svg
+													class="h-12 w-12 text-rose-200"
+													fill="none"
+													viewBox="0 0 24 24"
+													stroke="currentColor"
+												>
+													<path
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														stroke-width="1.5"
+														d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+													/>
+												</svg>
+												<p class="font-bold text-slate-600">A lixeira está vazia.</p>
+												<p class="text-xs text-slate-400">Nenhum estágio excluído com os filtros atuais.</p>
+											{:else}
+												<svg
+													class="h-12 w-12 text-slate-200"
+													fill="none"
+													viewBox="0 0 24 24"
+													stroke="currentColor"
+												>
+													<path
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														stroke-width="1.5"
+														d="M9.172 9.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+													/>
+												</svg>
+												<p class="font-medium text-slate-400 italic">Nenhum estagiário encontrado.</p>
+											{/if}
 										</div>
 									</td>
 								</tr>

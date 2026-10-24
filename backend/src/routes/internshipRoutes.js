@@ -12,6 +12,8 @@ router.get('/:id/history', internshipController.getInternshipHistory);
 router.post('/', internshipController.createInternship);
 router.put('/:id', internshipController.updateInternship);
 router.delete('/:id', internshipController.deleteInternship);
+router.post('/:id/restore', internshipController.restoreInternship);
+router.put('/:id/restore', internshipController.restoreInternship);
 router.post('/:id/notificar-professor', internshipController.notifyTeacherConference);
 router.post('/:id/notificar-aprovacao', internshipController.notifyCompanyApproval);
 router.post('/:id/notificar-reprovacao', internshipController.notifyCompanyRejection);

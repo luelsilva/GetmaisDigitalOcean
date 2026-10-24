@@ -1,6 +1,6 @@
 const { db } = require('../db');
 const { internships, internshipsHistory, profiles, emailLogs, internshipOccurrences } = require('../db/schema');
-const { eq, desc, asc, or, ilike, sql, and, isNull, inArray } = require('drizzle-orm');
+const { eq, desc, asc, or, ilike, sql, and, isNull, isNotNull, inArray } = require('drizzle-orm');
 const emailService = require('../services/emailService');
 const config = require('../config');
 const { checkSingleInternshipOccurrences } = require('../services/occurrenceService');
@@ -8,7 +8,8 @@ const { checkSingleInternshipOccurrences } = require('../services/occurrenceServ
 // Listar todos os estágios com suporte a busca e paginação
 exports.getAllInternships = async (req, res, next) => {
     try {
-        const { page, limit, search, teacher, status, studentName } = req.query;
+        const { page, limit, search, teacher, status, studentName, trash } = req.query;
+        const isTrash = trash === 'true' || trash === '1';
 
         const queryFields = {
             id: internships.id,
@@ -23,6 +24,7 @@ exports.getAllInternships = async (req, res, next) => {
             jsonData: internships.jsonData,
             createdAt: internships.createdAt,
             updatedAt: internships.updatedAt,
+            deletedAt: internships.deletedAt,
             lastModifiedBy: internships.lastModifiedBy,
             status: internships.status,
             hasOccurrences: sql`EXISTS (
@@ -33,7 +35,7 @@ exports.getAllInternships = async (req, res, next) => {
 
         let query = db.select(queryFields).from(internships);
 
-        const baseFilter = isNull(internships.deletedAt);
+        const baseFilter = isTrash ? isNotNull(internships.deletedAt) : isNull(internships.deletedAt);
         let whereClause = baseFilter;
 
         // Filtro por Professor (dentro do JSON)
@@ -87,8 +89,12 @@ exports.getAllInternships = async (req, res, next) => {
 
         query = query.where(whereClause);
 
-        // Ordenação estrita por nome (ignora maiúsculas/minúsculas e espaços em branco)
-        query = query.orderBy(asc(sql`lower(trim(${internships.studentName}))`));
+        // Se for lixeira, ordena pelos mais recentemente excluídos; senão, por ordem alfabética do aluno
+        if (isTrash) {
+            query = query.orderBy(desc(internships.deletedAt));
+        } else {
+            query = query.orderBy(asc(sql`lower(trim(${internships.studentName}))`));
+        }
 
         // Paginação
         if (page && limit) {
@@ -506,6 +512,37 @@ exports.deleteInternship = async (req, res, next) => {
 	} catch (error) {
 		next(error);
 	}
+};
+
+// Restaurar estágio (desfazer soft-delete)
+exports.restoreInternship = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const whereConditions = [eq(internships.id, id), isNotNull(internships.deletedAt)];
+
+        // Se for company, só pode restaurar se for vinculado a ele
+        if (req.user.roles === 'company') {
+            whereConditions.push(
+                or(
+                    eq(internships.userId, req.user.id),
+                    eq(internships.companyId, req.user.id)
+                )
+            );
+        }
+
+        const [restoredInternship] = await db.update(internships)
+            .set({ deletedAt: null, updatedAt: new Date(), lastModifiedBy: req.user.id })
+            .where(and(...whereConditions))
+            .returning();
+
+        if (!restoredInternship) {
+            return res.status(404).json({ error: 'Estágio não encontrado na lixeira ou já ativo' });
+        }
+
+        res.json({ message: 'Estágio restaurado com sucesso!', data: restoredInternship });
+    } catch (error) {
+        next(error);
+    }
 };
 
 // Notificar Professor para Conferência (Manual)
