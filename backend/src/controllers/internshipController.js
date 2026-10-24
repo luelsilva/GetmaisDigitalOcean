@@ -26,6 +26,8 @@ exports.getAllInternships = async (req, res, next) => {
             updatedAt: internships.updatedAt,
             deletedAt: internships.deletedAt,
             lastModifiedBy: internships.lastModifiedBy,
+            deletedByName: profiles.fullName,
+            deletedByEmail: profiles.email,
             status: internships.status,
             hasOccurrences: sql`EXISTS (
                 SELECT 1 FROM ${internshipOccurrences} io
@@ -33,7 +35,9 @@ exports.getAllInternships = async (req, res, next) => {
             )`.mapWith(Boolean),
         };
 
-        let query = db.select(queryFields).from(internships);
+        let query = db.select(queryFields)
+            .from(internships)
+            .leftJoin(profiles, eq(internships.lastModifiedBy, profiles.id));
 
         const baseFilter = isTrash ? isNotNull(internships.deletedAt) : isNull(internships.deletedAt);
         let whereClause = baseFilter;

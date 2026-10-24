@@ -21,6 +21,8 @@
 		createdAt: string;
 		updatedAt: string;
 		deletedAt?: string | null;
+		deletedByName?: string | null;
+		deletedByEmail?: string | null;
 		status:
 			| 'DRAFT'
 			| 'DRAFT_BY_TEACHER'
@@ -682,15 +684,21 @@
 								<th class="px-3 py-4 text-xs font-black tracking-wider text-slate-500 uppercase"
 									>Final</th
 								>
-								<th class="px-3 py-4 text-xs font-black tracking-wider text-slate-500 uppercase"
-									>Criado em</th
-								>
-								<th class="px-3 py-4 text-xs font-black tracking-wider text-slate-500 uppercase"
-									>{#if isTrash}Excluído em{:else}Modificado em{/if}</th
-								>
-								<th class="px-3 py-4 text-xs font-black tracking-wider text-slate-500 uppercase"
-									>Status</th
-								>
+								{#if isTrash}
+									<th class="px-3 py-4 text-xs font-black tracking-wider text-slate-500 uppercase"
+										>Excluído em</th
+									>
+									<th class="px-3 py-4 text-xs font-black tracking-wider text-slate-500 uppercase"
+										>Deletado por</th
+									>
+								{:else}
+									<th class="px-3 py-4 text-xs font-black tracking-wider text-slate-500 uppercase"
+										>Modificado em</th
+									>
+									<th class="px-3 py-4 text-xs font-black tracking-wider text-slate-500 uppercase"
+										>Status</th
+									>
+								{/if}
 
 								<th
 									class="px-3 py-4 text-center text-xs font-black tracking-wider text-slate-500 uppercase"
@@ -748,30 +756,36 @@
 									<td class="px-3 py-4 text-sm whitespace-nowrap text-slate-500"
 										>{formatDate(item.endDate)}</td
 									>
-									<td class="px-3 py-4 text-sm whitespace-nowrap text-slate-400"
-										>{new Date(item.createdAt).toLocaleString('pt-BR', {
-											day: '2-digit',
-											month: '2-digit',
-											year: 'numeric',
-											hour: '2-digit',
-											minute: '2-digit'
-										})}</td
-									>
-									<td class="px-3 py-4 text-sm whitespace-nowrap text-slate-400">
-										{#if isTrash && item.deletedAt}
+
+									{#if isTrash}
+										<td class="px-3 py-4 text-sm whitespace-nowrap text-slate-400">
 											<span class="inline-flex items-center gap-1 font-bold text-rose-600">
 												<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
 												</svg>
-												{new Date(item.deletedAt).toLocaleString('pt-BR', {
+												{item.deletedAt ? new Date(item.deletedAt).toLocaleString('pt-BR', {
 													day: '2-digit',
 													month: '2-digit',
 													year: 'numeric',
 													hour: '2-digit',
 													minute: '2-digit'
-												})}
+												}) : '-'}
 											</span>
-										{:else}
+										</td>
+										<td class="px-3 py-4">
+											<div class="flex flex-col">
+												<span class="text-sm font-bold text-slate-800">
+													{item.deletedByName || 'Não identificado'}
+												</span>
+												{#if item.deletedByEmail}
+													<span class="text-xs text-slate-500 font-mono">
+														{item.deletedByEmail}
+													</span>
+												{/if}
+											</div>
+										</td>
+									{:else}
+										<td class="px-3 py-4 text-sm whitespace-nowrap text-slate-400">
 											{new Date(item.updatedAt).toLocaleString('pt-BR', {
 												day: '2-digit',
 												month: '2-digit',
@@ -779,73 +793,65 @@
 												hour: '2-digit',
 												minute: '2-digit'
 											})}
-										{/if}
-									</td>
- 
-									<td class="px-3 py-4">
-										{#if isTrash}
-											<span
-												class="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-rose-700 uppercase"
-											>
-												<span class="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
-												Na Lixeira
-											</span>
-										{:else if item.status === 'DRAFT'}
-											<span
-												class="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-slate-600 uppercase"
-											>
-												Editando
-											</span>
-										{:else if item.status === 'DRAFT_BY_TEACHER'}
-											<span
-												class="inline-flex items-center rounded-full border border-purple-200 bg-purple-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-purple-700 uppercase"
-											>
-												Rascunho Professor
-											</span>
-										{:else if item.status === 'WAITING_APPROVAL'}
-											<span
-												class="inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-amber-700 uppercase"
-											>
-												Aguardando Aprovação
-											</span>
-										{:else if item.status === 'REVISION_REQUESTED'}
-											<span
-												class="inline-flex items-center rounded-full border border-rose-200 bg-rose-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-rose-700 uppercase"
-											>
-												Revisão Solicitada
-											</span>
-										{:else if item.status === 'APPROVED'}
-											<span
-												class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-emerald-700 uppercase"
-											>
-												Aprovado
-											</span>
-										{:else if item.status === 'STARTED'}
-											<span
-												class="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-indigo-700 uppercase"
-											>
-												Estagiando
-											</span>
-										{:else if item.status === 'FINISHED'}
-											<span
-												class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-emerald-700 uppercase"
-											>
-												Finalizado
-											</span>
-										{:else if item.status === 'ARCHIVED'}
-											<span
-												class="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-slate-500 uppercase"
-											>
-												Arquivado
-											</span>
-										{:else}
-											<span
-												class="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-slate-600 uppercase"
-											>
-												{item.status}
-											</span>
-										{/if}
-									</td>
+										</td>
+										<td class="px-3 py-4">
+											{#if item.status === 'DRAFT'}
+												<span
+													class="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-slate-600 uppercase"
+												>
+													Editando
+												</span>
+											{:else if item.status === 'DRAFT_BY_TEACHER'}
+												<span
+													class="inline-flex items-center rounded-full border border-purple-200 bg-purple-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-purple-700 uppercase"
+												>
+													Rascunho Professor
+												</span>
+											{:else if item.status === 'WAITING_APPROVAL'}
+												<span
+													class="inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-amber-700 uppercase"
+												>
+													Aguardando Aprovação
+												</span>
+											{:else if item.status === 'REVISION_REQUESTED'}
+												<span
+													class="inline-flex items-center rounded-full border border-rose-200 bg-rose-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-rose-700 uppercase"
+												>
+													Revisão Solicitada
+												</span>
+											{:else if item.status === 'APPROVED'}
+												<span
+													class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-emerald-700 uppercase"
+												>
+													Aprovado
+												</span>
+											{:else if item.status === 'STARTED'}
+												<span
+													class="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-indigo-700 uppercase"
+												>
+													Estagiando
+												</span>
+											{:else if item.status === 'FINISHED'}
+												<span
+													class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-emerald-700 uppercase"
+												>
+													Finalizado
+												</span>
+											{:else if item.status === 'ARCHIVED'}
+												<span
+													class="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-slate-500 uppercase"
+												>
+													Arquivado
+												</span>
+											{:else}
+												<span
+													class="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[10px] font-black tracking-tight text-slate-600 uppercase"
+												>
+													{item.status}
+												</span>
+											{/if}
+										</td>
+									{/if}
  
 									<td class="px-3 py-4 text-center">
 										<div class="flex items-center justify-center gap-2">
@@ -963,7 +969,7 @@
 
 							{#if internships.length === 0}
 								<tr>
-									<td colspan="10" class="px-3 py-20 text-center">
+									<td colspan="9" class="px-3 py-20 text-center">
 										<div class="flex flex-col items-center space-y-2">
 											{#if isTrash}
 												<svg
