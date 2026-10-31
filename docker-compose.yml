@@ -1,5 +1,6 @@
 services:
   backend:
+    init: true
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -16,6 +17,7 @@ services:
     shm_size: '512m'
 
   frontend:
+    init: true
     build:
       context: ./frontend
       dockerfile: Dockerfile
